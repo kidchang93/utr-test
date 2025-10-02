@@ -9,7 +9,7 @@ from ultralytics import YOLO
 # success = model.export(format="onnx")
 
 # 학습된 모델 로드
-model = YOLO("runs/classify/korean_food/weights/best.pt")
+model = YOLO("trains/runs/classify/korean_food/weights/best.pt")
 
 # 테스트할 이미지 경로
 img_path = "C:/Users/Quzz/Downloads/4QEyaXWxmg3mT9fR-resized.webp"
