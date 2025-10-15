@@ -1,7 +1,5 @@
 from fastapi import FastAPI
 
-from trains import train_korean_food
-
 app = FastAPI()
 
 # if __name__ == "__main__":
