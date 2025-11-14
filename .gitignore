@@ -1,2 +1,32 @@
+# 데이터셋 및 학습 결과
 /datasets/
 /runs/
+
+# 환경 변수 (중요: 자격증명 포함)
+/.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# 임시 파일
+*.log
+*.tmp
+temp_*/
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.iml
+
+# 모델 파일
+*.pt
+*.pth
+*.onnx
+!yolo11n-cls.pt
+!yolo11n.pt

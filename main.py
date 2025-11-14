@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 
-import train_korean_food
 from prepares import prepare_data
+from scripts import train_korean_food
 
 app = FastAPI()
 
