@@ -145,6 +145,28 @@ class S3DataSplitter:
             logger.error(f"클래스 구조 분석 중 오류: {e}")
             return {}
     
+    def object_exists(self, key: str) -> bool:
+        """
+        S3 객체 존재 여부 확인
+        
+        Args:
+            key: S3 객체 키
+            
+        Returns:
+            존재 여부
+        """
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+            return True
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == '404':
+                return False
+            else:
+                # 404가 아닌 다른 오류는 로그만 남기고 False 반환
+                logger.warning(f"객체 확인 중 오류 ({key}): {e}")
+                return False
+    
     def copy_object(self, source_key: str, dest_key: str) -> bool:
         """
         S3 내에서 객체 복사
@@ -210,6 +232,8 @@ class S3DataSplitter:
         
         total_train = 0
         total_val = 0
+        skipped_train = 0
+        skipped_val = 0
         
         # 각 클래스별로 분할 및 복사
         for class_idx, (class_name, image_keys) in enumerate(class_structure.items(), 1):
@@ -229,11 +253,18 @@ class S3DataSplitter:
             
             # Train 복사
             train_success = 0
+            train_skipped = 0
             with tqdm(total=len(train_keys), desc=f"  Train {class_name}", unit="file") as pbar:
                 for source_key in train_keys:
                     # 파일명 추출
                     filename = source_key.split('/')[-1]
                     dest_key = f"{train_prefix}{class_name}/{filename}"
+                    
+                    # 이미 존재하는지 확인
+                    if self.object_exists(dest_key):
+                        train_skipped += 1
+                        pbar.update(1)
+                        continue
                     
                     if self.copy_object(source_key, dest_key):
                         train_success += 1
@@ -242,10 +273,17 @@ class S3DataSplitter:
             
             # Val 복사
             val_success = 0
+            val_skipped = 0
             with tqdm(total=len(val_keys), desc=f"  Val {class_name}", unit="file") as pbar:
                 for source_key in val_keys:
                     filename = source_key.split('/')[-1]
                     dest_key = f"{val_prefix}{class_name}/{filename}"
+                    
+                    # 이미 존재하는지 확인
+                    if self.object_exists(dest_key):
+                        val_skipped += 1
+                        pbar.update(1)
+                        continue
                     
                     if self.copy_object(source_key, dest_key):
                         val_success += 1
@@ -254,15 +292,17 @@ class S3DataSplitter:
             
             total_train += train_success
             total_val += val_success
+            skipped_train += train_skipped
+            skipped_val += val_skipped
             
-            logger.info(f"   ✅ 완료: 학습 {train_success}, 검증 {val_success}")
+            logger.info(f"   ✅ 완료: 학습 {train_success}개 복사, {train_skipped}개 스킵 / 검증 {val_success}개 복사, {val_skipped}개 스킵")
         
         logger.info("\n" + "="*70)
         logger.info("✅ 전체 분할 완료!")
         logger.info("="*70)
-        logger.info(f"학습 데이터: {total_train:,}개")
-        logger.info(f"검증 데이터: {total_val:,}개")
-        logger.info(f"전체: {total_train + total_val:,}개")
+        logger.info(f"학습 데이터: {total_train:,}개 복사, {skipped_train:,}개 스킵")
+        logger.info(f"검증 데이터: {total_val:,}개 복사, {skipped_val:,}개 스킵")
+        logger.info(f"전체: {total_train + total_val:,}개 복사, {skipped_train + skipped_val:,}개 스킵")
         logger.info("="*70)
         
         return total_train, total_val
