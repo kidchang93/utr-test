@@ -1,0 +1,15 @@
+# NVIDIA GPU 서버용 requirements
+# Python 3.13 호환 (CUDA 12.8)
+#
+# 설치 순서:
+# 1. pip install -r requirements.txt
+# 2. pip install -r requirements-cuda.txt
+#
+# CUDA 12.8 GPU 가속 지원
+
+# PyTorch for CUDA 12.8 (Python 3.13 호환)
+--index-url https://download.pytorch.org/whl/cu128
+torch==2.8.0+cu128
+torchvision==0.23.0+cu128
+torchaudio==2.8.0+cu128
+

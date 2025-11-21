@@ -1,0 +1,14 @@
+# Apple Silicon (M1/M2/M3/M4) Mac용 requirements
+# Python 3.13 호환
+# 
+# 설치 순서:
+# 1. pip install -r requirements.txt
+# 2. pip install -r requirements-mac.txt
+#
+# MPS(Metal Performance Shaders) GPU 가속 지원
+
+# PyTorch for Apple Silicon (Python 3.13 + MPS 지원)
+torch==2.7.1
+torchvision==0.22.1
+torchaudio==2.7.1
+
