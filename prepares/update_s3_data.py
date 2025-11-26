@@ -18,13 +18,11 @@ from tqdm import tqdm
 sys.path.append(str(Path(__file__).parent.parent))
 
 from config.s3_config import get_s3_config
+from utils.log_utils import LoggerFactory
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# 전역 로거 (이 스크립트 전용 이름으로 생성)
+logger = LoggerFactory.get_logger(__name__, log_name="update_s3_data")
 
 
 class S3IncrementalUpdater:
@@ -250,7 +248,10 @@ class S3IncrementalUpdater:
 
 def main():
     """메인 함수"""
-    
+    logger.info("=" * 70)
+    logger.info("🚀 update_s3_data.py 실행 시작")
+    logger.info("=" * 70)
+
     print("\n" + "="*70)
     print("🔄 S3 증분 업데이트 (foods/ → train/, val/)")
     print("="*70 + "\n")
@@ -305,7 +306,8 @@ def main():
             val_prefix=VAL_PREFIX,
             train_ratio=TRAIN_RATIO
         )
-        
+        logger.info("✅ update_s3_data.py 정상 종료")
+
         print("\n" + "="*70)
         print("📝 다음 단계:")
         print("="*70)
@@ -316,6 +318,7 @@ def main():
         print("="*70 + "\n")
         
     except KeyboardInterrupt:
+        logger.warning("⚠️ 사용자가 작업을 중단했습니다.")
         print("\n\n⚠️  사용자가 중단했습니다.")
     except Exception as e:
         logger.error(f"오류 발생: {e}", exc_info=True)
