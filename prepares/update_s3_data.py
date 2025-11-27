@@ -10,7 +10,6 @@ foods/에 새로운 클래스나 이미지가 추가되었을 때 사용
 import sys
 import logging
 from pathlib import Path
-import random
 import boto3
 from botocore.exceptions import ClientError
 from tqdm import tqdm
@@ -143,8 +142,7 @@ class S3IncrementalUpdater:
         raw_prefix: str = 'foods/',
         train_prefix: str = 'train/',
         val_prefix: str = 'val/',
-        train_ratio: float = 0.8,
-        random_seed: int = 42
+        train_ratio: float = 0.8
     ):
         """
         증분 업데이트 실행
@@ -155,8 +153,6 @@ class S3IncrementalUpdater:
         logger.info("="*70)
         logger.info("🔄 S3 증분 업데이트 시작")
         logger.info("="*70)
-        
-        random.seed(random_seed)
         
         # 1. 새로운 클래스 처리
         logger.info("\n1️⃣ 새로운 클래스 확인 중...")
@@ -172,12 +168,11 @@ class S3IncrementalUpdater:
             
             for class_name in new_classes:
                 images = raw_structure[class_name]
-                shuffled = images.copy()
-                random.shuffle(shuffled)
+                ordered = images.copy()
                 
-                split_idx = int(len(shuffled) * train_ratio)
-                train_keys = shuffled[:split_idx]
-                val_keys = shuffled[split_idx:]
+                split_idx = int(len(ordered) * train_ratio)
+                train_keys = ordered[:split_idx]
+                val_keys = ordered[split_idx:]
                 
                 logger.info(f"\n   {class_name}: 학습 {len(train_keys)}, 검증 {len(val_keys)}")
                 
@@ -215,12 +210,11 @@ class S3IncrementalUpdater:
                 logger.info(f"\n   {class_name}: {len(new_images)}개 새 이미지")
                 
                 # 랜덤 셔플 후 분할
-                shuffled = new_images.copy()
-                random.shuffle(shuffled)
+                ordered = new_images.copy()
                 
-                split_idx = int(len(shuffled) * train_ratio)
-                train_keys = shuffled[:split_idx]
-                val_keys = shuffled[split_idx:]
+                split_idx = int(len(ordered) * train_ratio)
+                train_keys = ordered[:split_idx]
+                val_keys = ordered[split_idx:]
                 
                 # Train 복사
                 for source_key in tqdm(train_keys, desc=f"     Train {class_name}"):
@@ -244,6 +238,52 @@ class S3IncrementalUpdater:
         logger.info(f"업데이트된 클래스: {len(classes_with_new_images)}개")
         logger.info(f"총 새 이미지: {total_new_images}개")
         logger.info("="*70)
+        return {
+            "new_classes": len(new_classes),
+            "updated_classes": len(classes_with_new_images),
+            "total_new_images": total_new_images,
+        }
+
+
+def run_incremental_update(
+    train_ratio: float = 0.8,
+    raw_prefix: str | None = None,
+    train_prefix: str | None = None,
+    val_prefix: str | None = None,
+) -> dict:
+    """
+    실행 함수 형태로 증분 업데이트를 수행한다.
+
+    Returns:
+        업데이트 요약 딕셔너리
+    """
+    s3_config = get_s3_config()
+    s3_params = s3_config.get_s3_params()
+    updater = S3IncrementalUpdater(
+        bucket_name=s3_params['bucket_name'],
+        access_key=s3_params.get('access_key'),
+        secret_key=s3_params.get('secret_key'),
+        region=s3_params['region'],
+        domain=s3_params.get('domain')
+    )
+
+    summary = updater.update_incremental(
+        raw_prefix=raw_prefix or s3_config.raw_prefix,
+        train_prefix=train_prefix or s3_config.train_prefix,
+        val_prefix=val_prefix or s3_config.val_prefix,
+        train_ratio=train_ratio,
+    )
+    summary.update(
+        {
+            "bucket": s3_config.bucket_name,
+            "raw_prefix": raw_prefix or s3_config.raw_prefix,
+            "train_prefix": train_prefix or s3_config.train_prefix,
+            "val_prefix": val_prefix or s3_config.val_prefix,
+            "train_ratio": train_ratio,
+        }
+    )
+    logger.info("✅ 증분 업데이트 요약 - %s", summary)
+    return summary
 
 
 def main():
@@ -288,19 +328,9 @@ def main():
         print("❌ 작업 취소됨")
         return
     
-    # S3 업데이터 초기화
-    s3_params = s3_config.get_s3_params()
-    updater = S3IncrementalUpdater(
-        bucket_name=s3_params['bucket_name'],
-        access_key=s3_params.get('access_key'),
-        secret_key=s3_params.get('secret_key'),
-        region=s3_params['region'],
-        domain=s3_params.get('domain')
-    )
-    
     # 증분 업데이트 실행
     try:
-        updater.update_incremental(
+        run_incremental_update(
             raw_prefix=RAW_PREFIX,
             train_prefix=TRAIN_PREFIX,
             val_prefix=VAL_PREFIX,

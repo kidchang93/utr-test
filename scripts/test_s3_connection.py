@@ -6,7 +6,10 @@ import sys
 import logging
 from pathlib import Path
 
-sys.path.append(str(Path(__file__).parent))
+# scripts 디렉터리에서 최상위 패키지까지 경로를 추가
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 
 from config.s3_config import get_s3_config
 from utils.s3_loader import S3ImageLoader

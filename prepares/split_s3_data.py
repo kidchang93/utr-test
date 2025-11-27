@@ -6,7 +6,6 @@ train/{label}/, val/{label}/ 구조를 새로 생성
 import sys
 import logging
 from pathlib import Path
-import random
 import boto3
 from botocore.exceptions import ClientError
 from tqdm import tqdm
@@ -195,8 +194,7 @@ class S3DataSplitter:
         source_prefix: str = 'foods/',
         train_prefix: str = 'train/',
         val_prefix: str = 'val/',
-        train_ratio: float = 0.8,
-        random_seed: int = 42
+        train_ratio: float = 0.8
     ) -> tuple:
         """
         S3 데이터를 train/val로 분할하여 복사
@@ -206,7 +204,6 @@ class S3DataSplitter:
             train_prefix: 학습 데이터 대상 prefix
             val_prefix: 검증 데이터 대상 prefix
             train_ratio: 학습 데이터 비율 (0~1)
-            random_seed: 랜덤 시드
             
         Returns:
             (train_count, val_count) 튜플
@@ -219,9 +216,6 @@ class S3DataSplitter:
         logger.info(f"검증: {val_prefix}")
         logger.info(f"비율: {train_ratio:.0%} / {1-train_ratio:.0%}")
         logger.info("="*70 + "\n")
-        
-        # 랜덤 시드 설정
-        random.seed(random_seed)
         
         # 클래스 구조 분석
         class_structure = self.get_class_structure(source_prefix)
@@ -240,14 +234,13 @@ class S3DataSplitter:
             logger.info(f"\n[{class_idx}/{len(class_structure)}] {class_name} 처리 중...")
             logger.info(f"   전체: {len(image_keys)}개")
             
-            # 랜덤 셔플
-            shuffled_keys = image_keys.copy()
-            random.shuffle(shuffled_keys)
+            # 입력 순서대로 분할 (S3 리스트 순서 유지)
+            ordered_keys = image_keys.copy()
             
             # Train/Val 분할
-            split_idx = int(len(shuffled_keys) * train_ratio)
-            train_keys = shuffled_keys[:split_idx]
-            val_keys = shuffled_keys[split_idx:]
+            split_idx = int(len(ordered_keys) * train_ratio)
+            train_keys = ordered_keys[:split_idx]
+            val_keys = ordered_keys[split_idx:]
             
             logger.info(f"   학습: {len(train_keys)}개, 검증: {len(val_keys)}개")
             
@@ -342,6 +335,54 @@ class S3DataSplitter:
         logger.info("="*70)
 
 
+def split_s3_dataset(
+    source_prefix: str | None = None,
+    train_prefix: str | None = None,
+    val_prefix: str | None = None,
+    train_ratio: float = 0.8,
+) -> dict:
+    """
+    Split raw S3 data into train/val prefixes using the same logic as the CLI script.
+
+    Returns:
+        분할 결과 통계 딕셔너리
+    """
+    s3_config = get_s3_config()
+    s3_params = s3_config.get_s3_params()
+    splitter = S3DataSplitter(
+        bucket_name=s3_params['bucket_name'],
+        access_key=s3_params.get('access_key'),
+        secret_key=s3_params.get('secret_key'),
+        region=s3_params['region'],
+        domain=s3_params.get('domain')
+    )
+
+    if not splitter.check_bucket_access():
+        raise ValueError(f"버킷 '{s3_config.bucket_name}'에 접근할 수 없습니다.")
+
+    source = source_prefix or s3_config.raw_prefix
+    train = train_prefix or s3_config.train_prefix
+    val = val_prefix or s3_config.val_prefix
+
+    train_count, val_count = splitter.split_and_copy(
+        source_prefix=source,
+        train_prefix=train,
+        val_prefix=val,
+        train_ratio=train_ratio,
+    )
+    splitter.verify_structure(train, val)
+    summary = {
+        "bucket": s3_config.bucket_name,
+        "source_prefix": source,
+        "train_prefix": train,
+        "val_prefix": val,
+        "train_copied": train_count,
+        "val_copied": val_count,
+    }
+    logger.info("✅ S3 split 완료 - %s", summary)
+    return summary
+
+
 def main():
     """메인 함수"""
     
@@ -384,51 +425,29 @@ def main():
         return
     
     # ==================== S3 분할기 초기화 ====================
-    s3_params = s3_config.get_s3_params()
-    splitter = S3DataSplitter(
-        bucket_name=s3_params['bucket_name'],
-        access_key=s3_params.get('access_key'),
-        secret_key=s3_params.get('secret_key'),
-        region=s3_params['region'],
-        domain=s3_params.get('domain')
-    )
-    
-    # 버킷 접근 확인
-    if not splitter.check_bucket_access():
-        logger.error("버킷 접근 실패. 종료합니다.")
-        return
-    
-    # ==================== 분할 실행 ====================
     try:
-        train_count, val_count = splitter.split_and_copy(
+        summary = split_s3_dataset(
             source_prefix=SOURCE_PREFIX,
             train_prefix=TRAIN_PREFIX,
             val_prefix=VAL_PREFIX,
-            train_ratio=TRAIN_RATIO
+            train_ratio=TRAIN_RATIO,
         )
-        
-        if train_count == 0 and val_count == 0:
-            logger.error("❌ 분할 실패!")
-            return
-        
-        # ==================== 결과 확인 ====================
-        splitter.verify_structure(TRAIN_PREFIX, VAL_PREFIX)
-        
-        # ==================== 다음 단계 안내 ====================
-        print("\n" + "="*70)
-        print("📝 다음 단계:")
-        print("="*70)
-        print("\n1. 연결 테스트:")
-        print("   python test_s3_connection.py")
-        print("\n2. 학습 시작:")
-        print("   python train_korean_food_s3_hybrid.py")
-        print("\n💡 자세한 사용법은 QUICK_START_S3.md를 참고하세요.")
-        print("="*70 + "\n")
-        
     except KeyboardInterrupt:
         print("\n\n⚠️  사용자가 중단했습니다.")
+        return
     except Exception as e:
         logger.error(f"오류 발생: {e}", exc_info=True)
+        return
+
+    print("\n" + "="*70)
+    print("📝 다음 단계:")
+    print("="*70)
+    print("\n1. 연결 테스트:")
+    print("   python test_s3_connection.py")
+    print("\n2. 학습 시작:")
+    print("   python train_korean_food_s3_hybrid.py")
+    print("\n💡 자세한 사용법은 QUICK_START_S3.md를 참고하세요.")
+    print("="*70 + "\n")
 
 
 if __name__ == "__main__":

@@ -10,8 +10,10 @@ from torch.utils.data import DataLoader
 import torchvision.transforms as transforms
 from ultralytics import YOLO
 
-# 프로젝트 경로 추가
-sys.path.append(str(Path(__file__).parent))
+# 프로젝트 루트를 sys.path에 추가하여 패키지 임포트 이슈 방지
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.append(str(PROJECT_ROOT))
 
 from utils.s3_dataset import S3YOLOClassificationDataset
 from config.s3_config import get_s3_config

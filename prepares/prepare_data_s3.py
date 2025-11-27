@@ -5,6 +5,8 @@ train/val 폴더 구조를 유지하면서 S3에 업로드
 import sys
 import logging
 from pathlib import Path
+from typing import Dict, Tuple
+
 import boto3
 from botocore.exceptions import ClientError, NoCredentialsError
 from tqdm import tqdm
@@ -19,6 +21,8 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+IMAGE_EXTENSIONS = ['*.jpg', '*.jpeg', '*.png', '*.JPG', '*.JPEG', '*.PNG']
 
 
 class S3DataUploader:
@@ -123,12 +127,12 @@ class S3DataUploader:
             (성공 수, 실패 수) 튜플
         """
         if extensions is None:
-            extensions = ['.jpg', '.jpeg', '.png', '.JPG', '.JPEG', '.PNG']
+            extensions = IMAGE_EXTENSIONS.copy()
         
         # 모든 이미지 파일 찾기
         image_files = []
         for ext in extensions:
-            image_files.extend(local_dir.rglob(f'*{ext}'))
+            image_files.extend(local_dir.rglob(ext))
         
         if not image_files:
             logger.warning(f"'{local_dir}' 하위에 이미지 파일이 없습니다.")
@@ -202,6 +206,87 @@ class S3DataUploader:
             logger.error(f"S3 구조 조회 실패: {e}")
 
 
+def _count_images(root_dir: Path) -> Tuple[int, int]:
+    """클래스 개수와 전체 이미지를 계산한다."""
+    class_dirs = [d for d in root_dir.iterdir() if d.is_dir()]
+    total_images = 0
+    for class_dir in class_dirs:
+        for pattern in IMAGE_EXTENSIONS:
+            total_images += len(list(class_dir.glob(pattern)))
+    return len(class_dirs), total_images
+
+
+def upload_local_dataset_to_s3(
+    local_dataset_dir: str,
+    create_bucket_if_missing: bool = False,
+) -> Dict[str, int]:
+    """
+    로컬 train/val 데이터를 S3 버킷으로 업로드한다.
+
+    Args:
+        local_dataset_dir: train/val 구조가 포함된 로컬 디렉터리
+        create_bucket_if_missing: True면 버킷이 없을 경우 자동 생성
+
+    Returns:
+        업로드 통계 정보
+    """
+    logger.info("📤 S3 업로드 요청 - local_dir=%s", local_dataset_dir)
+    dataset_dir = Path(local_dataset_dir)
+    if not dataset_dir.exists():
+        raise FileNotFoundError(f"로컬 데이터셋을 찾을 수 없습니다: {dataset_dir}")
+
+    train_dir = dataset_dir / "train"
+    val_dir = dataset_dir / "val"
+    if not train_dir.exists() or not val_dir.exists():
+        raise ValueError("train/val 폴더가 모두 존재해야 합니다.")
+
+    train_classes, train_count = _count_images(train_dir)
+    val_classes, val_count = _count_images(val_dir)
+
+    s3_config = get_s3_config()
+    s3_params = s3_config.get_s3_params()
+    uploader = S3DataUploader(
+        bucket_name=s3_params['bucket_name'],
+        access_key=s3_params.get('access_key'),
+        secret_key=s3_params.get('secret_key'),
+        region=s3_params['region'],
+        domain=s3_params.get('domain'),
+    )
+
+    if not uploader.check_bucket_exists():
+        if not create_bucket_if_missing:
+            raise ValueError(
+                f"버킷 '{s3_config.bucket_name}'을 찾을 수 없습니다. "
+                "create_bucket_if_missing=True로 요청하거나 버킷을 생성하세요."
+            )
+        if not uploader.create_bucket_if_not_exists(s3_config.region):
+            raise RuntimeError("버킷 생성에 실패했습니다.")
+
+    train_success, train_fail = uploader.upload_directory(
+        local_dir=train_dir,
+        s3_prefix=s3_config.train_prefix,
+    )
+    val_success, val_fail = uploader.upload_directory(
+        local_dir=val_dir,
+        s3_prefix=s3_config.val_prefix,
+    )
+
+    summary = {
+        "bucket": s3_config.bucket_name,
+        "train_prefix": s3_config.train_prefix,
+        "val_prefix": s3_config.val_prefix,
+        "train_classes": train_classes,
+        "val_classes": val_classes,
+        "train_images": train_count,
+        "val_images": val_count,
+        "uploaded_train": train_success,
+        "uploaded_val": val_success,
+        "upload_failures": train_fail + val_fail,
+    }
+    logger.info("✅ S3 업로드 완료 - %s", summary)
+    return summary
+
+
 def main():
     """메인 함수"""
     
@@ -219,7 +304,6 @@ def main():
         return
     
     # ==================== 로컬 데이터 경로 ====================
-    # 여기서는 기존 prepare_data.py에서 만든 데이터셋 사용
     LOCAL_DATASET_DIR = Path(r"D:\lck_data\dataset\kfood-yolo")
     
     if not LOCAL_DATASET_DIR.exists():
@@ -234,22 +318,12 @@ def main():
         logger.error(f"❌ train 또는 val 폴더를 찾을 수 없습니다.")
         return
     
-    # 통계
-    train_classes = [d for d in train_dir.iterdir() if d.is_dir()]
-    val_classes = [d for d in val_dir.iterdir() if d.is_dir()]
-    
-    train_count = sum(
-        len(list(c.glob("*.jpg"))) + len(list(c.glob("*.png")))
-        for c in train_classes
-    )
-    val_count = sum(
-        len(list(c.glob("*.jpg"))) + len(list(c.glob("*.png")))
-        for c in val_classes
-    )
+    train_classes, train_count = _count_images(train_dir)
+    val_classes, val_count = _count_images(val_dir)
     
     logger.info(f"\n📊 로컬 데이터셋 정보:")
     logger.info(f"   경로: {LOCAL_DATASET_DIR}")
-    logger.info(f"   카테고리: {len(train_classes)}개")
+    logger.info(f"   카테고리(Train/Val): {train_classes}/{val_classes}")
     logger.info(f"   학습: {train_count:,}장")
     logger.info(f"   검증: {val_count:,}장")
     logger.info(f"   전체: {train_count + val_count:,}장")
@@ -266,7 +340,29 @@ def main():
         print("❌ 업로드 취소됨")
         return
     
-    # ==================== S3 업로더 초기화 ====================
+    create_bucket_if_missing = False
+    print("\n버킷이 존재하지 않을 경우 자동으로 생성할까요? (yes/no): ", end="")
+    if input().strip().lower() == 'yes':
+        create_bucket_if_missing = True
+    
+    try:
+        summary = upload_local_dataset_to_s3(
+            local_dataset_dir=str(LOCAL_DATASET_DIR),
+            create_bucket_if_missing=create_bucket_if_missing,
+        )
+    except Exception as exc:
+        logger.error(f"업로드 실패: {exc}")
+        return
+    
+    print("\n" + "="*70)
+    print("✅ 업로드 완료!")
+    print("="*70)
+    print(f"버킷: s3://{summary['bucket']}/")
+    print(f"Train 업로드: {summary['uploaded_train']:,}개")
+    print(f"Val 업로드: {summary['uploaded_val']:,}개")
+    print(f"실패: {summary['upload_failures']}개")
+    
+    # S3 구조 출력
     s3_params = s3_config.get_s3_params()
     uploader = S3DataUploader(
         bucket_name=s3_params['bucket_name'],
@@ -275,52 +371,6 @@ def main():
         region=s3_params['region'],
         domain=s3_params.get('domain')
     )
-    
-    # 버킷 확인 및 생성
-    if not uploader.check_bucket_exists():
-        logger.info("\n버킷이 존재하지 않습니다.")
-        create = input("새 버킷을 생성하시겠습니까? (yes/no): ").strip().lower()
-        if create == 'yes':
-            if not uploader.create_bucket_if_not_exists(s3_params['region_name']):
-                logger.error("버킷 생성 실패. 종료합니다.")
-                return
-        else:
-            logger.info("업로드 취소됨")
-            return
-    
-    # ==================== 업로드 실행 ====================
-    print("\n" + "="*70)
-    print("📤 S3 업로드 시작")
-    print("="*70)
-    
-    total_success = 0
-    total_fail = 0
-    
-    # 1. Train 업로드
-    train_success, train_fail = uploader.upload_directory(
-        local_dir=train_dir,
-        s3_prefix=s3_config.train_prefix
-    )
-    total_success += train_success
-    total_fail += train_fail
-    
-    # 2. Val 업로드
-    val_success, val_fail = uploader.upload_directory(
-        local_dir=val_dir,
-        s3_prefix=s3_config.val_prefix
-    )
-    total_success += val_success
-    total_fail += val_fail
-    
-    # ==================== 결과 ====================
-    print("\n" + "="*70)
-    print("✅ 업로드 완료!")
-    print("="*70)
-    print(f"성공: {total_success:,}개")
-    print(f"실패: {total_fail}개")
-    print(f"버킷: s3://{s3_config.bucket_name}/")
-    
-    # S3 구조 출력
     uploader.list_s3_structure()
     
     print("\n" + "="*70)

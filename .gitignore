@@ -30,3 +30,4 @@ Thumbs.db
 *.onnx
 !yolo11n-cls.pt
 !yolo11n.pt
+/logs/

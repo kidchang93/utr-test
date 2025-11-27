@@ -289,12 +289,6 @@ python prepares/split_s3_data.py
 TRAIN_RATIO = 0.7  # 70:30 분할
 ```
 
-### 랜덤 시드 변경
-
-```python
-random_seed = 123  # 다른 분할 결과
-```
-
 ### S3 경로 변경
 
 ```python
@@ -331,7 +325,6 @@ new_images = raw_images - existing_images  # {'_501.jpg', ..., '_550.jpg'}
 
 ```python
 new_images = ['_501.jpg', ..., '_550.jpg']  # 50개
-random.shuffle(new_images)
 train_new = new_images[:40]  # 80%
 val_new = new_images[40:]     # 20%
 ```
