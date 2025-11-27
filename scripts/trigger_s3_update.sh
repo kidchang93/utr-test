@@ -18,9 +18,9 @@ response=$(curl -s -X POST "http://localhost:8000/v1/prepares/dataset/s3/update"
      -H "Content-Type: application/json" \
      -d "{
            \"train_ratio\": $TRAIN_RATIO,
-           \"raw_prefix\": \"foods\",
-           \"train_prefix\": \"train\",
-           \"val_prefix\": \"val\"
+           \"raw_prefix\": \"foods/\",
+           \"train_prefix\": \"train/\",
+           \"val_prefix\": \"val/\"
          }")
 
 echo "Response:"

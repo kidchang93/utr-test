@@ -150,6 +150,14 @@ class S3IncrementalUpdater:
         1. 새로운 클래스 찾기 → 전체 분할하여 추가
         2. 기존 클래스의 새 이미지 찾기 → 기존 비율 유지하며 추가
         """
+        # Prefix가 /로 끝나도록 보정
+        if not raw_prefix.endswith('/'):
+            raw_prefix += '/'
+        if not train_prefix.endswith('/'):
+            train_prefix += '/'
+        if not val_prefix.endswith('/'):
+            val_prefix += '/'
+
         logger.info("="*70)
         logger.info("🔄 S3 증분 업데이트 시작")
         logger.info("="*70)
@@ -202,6 +210,7 @@ class S3IncrementalUpdater:
             if new_images:
                 total_new_images += len(new_images)
                 classes_with_new_images.append((class_name, new_images))
+                logger.info(f"새 이미지 발견: {len(classes_with_new_images)}")
         
         if classes_with_new_images:
             logger.info(f"✨ 새 이미지 발견: {len(classes_with_new_images)}개 클래스, 총 {total_new_images}개 이미지")
