@@ -9,3 +9,10 @@ GET http://127.0.0.1:8000/hello/User
 Accept: application/json
 
 ###
+
+# S3 하이브리드 배치 학습 시작
+POST http://127.0.0.1:8000/v1/trains/s3/hybrid
+Content-Type: application/json
+x-birthdate: 930721
+
+###

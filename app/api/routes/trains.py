@@ -23,6 +23,12 @@ def _enqueue_task(background_tasks: BackgroundTasks, func, *args, **kwargs) -> N
     background_tasks.add_task(func, *args, **kwargs)
 
 
+def train_s3_hybrid():
+    """train_korean_food_s3_hybrid.py의 main 함수를 실행"""
+    from scripts.train_korean_food_s3_hybrid import main
+    main()
+
+
 @router.post(
     "/s3/stream",
     response_model=JobResponse,
@@ -54,6 +60,49 @@ def trigger_s3_stream_training(
     return JobResponse(
         status="queued",
         message="S3 스트리밍 학습이 백그라운드에서 시작되었습니다.",
+    )
+
+
+@router.post(
+    "/s3/hybrid",
+    response_model=JobResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+    summary="S3 하이브리드 배치 학습 실행",
+    description="`train_korean_food_s3_hybrid.py`를 호출하여 클래스별 배치 학습을 시작합니다. "
+                "각 클래스마다 50장씩 다운로드 → 학습 → 삭제를 반복하며, "
+                "TRAIN 데이터를 모두 학습한 후 VAL 데이터를 학습합니다.",
+    responses={
+        202: {"description": "학습 작업이 백그라운드 큐에 등록됨"},
+        400: {"description": "x-birthdate 헤더 누락 또는 형식 오류"},
+        500: {"description": "내부 오류"},
+    },
+)
+def trigger_s3_hybrid_training(
+    background_tasks: BackgroundTasks,
+    birthdate: str = Depends(validate_birthdate_header),
+) -> JobResponse:
+    """
+    `scripts/train_korean_food_s3_hybrid.py`의 학습 루프를 API로 노출합니다.
+    
+    특징:
+    - 클래스별 배치 학습 (50장씩 다운로드 → 학습 → 삭제)
+    - TRAIN 데이터를 먼저 모두 학습한 후 VAL 데이터 학습
+    - 진행 상황을 progress.json에 저장하여 중단 후 재시작 가능
+    - 버전 관리 (1.0.1, 1.0.2, ... 1.1.0, 2.0.0)
+    
+    요청 헤더 `x-birthdate`에 YYMMDD 형식의 6자리 숫자를 포함해야 하며,
+    해당 값은 단순 검증 후 로깅 용도로만 활용됩니다.
+    """
+    if not birthdate:
+        raise HTTPException(status_code=400, detail="유효한 인증 헤더가 필요합니다.")
+
+    logger.info("S3 하이브리드 배치 학습 요청 - birthdate=%s", birthdate)
+    _enqueue_task(background_tasks, train_s3_hybrid)
+    logger.info("S3 하이브리드 배치 학습 작업이 백그라운드에 등록되었습니다.")
+    return JobResponse(
+        status="queued",
+        message="S3 하이브리드 배치 학습이 백그라운드에서 시작되었습니다. "
+                "진행 상황은 progress.json 파일에서 확인할 수 있습니다.",
     )
 
 
