@@ -53,6 +53,8 @@ def configure_logging() -> None:
     root_logger.setLevel(logging.INFO)
     root_logger.addHandler(handler)
 
+    # watchfiles 로거 억제 (uvicorn reload 모드의 파일 변경 감지 메시지)
+    logging.getLogger("watchfiles.main").setLevel(logging.WARNING)
 
 def add_request_logging(app: FastAPI) -> None:
     """Attach middleware to log every HTTP request/response."""
