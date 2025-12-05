@@ -24,6 +24,7 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+logging.getLogger('ultralytics').setLevel(logging.INFO)
 
 # PyTorch 2.6+ 호환성 설정
 try:
@@ -180,9 +181,9 @@ def main():
     # 설정
     MODEL_SIZE = "11n"
     MODEL_TYPE = "-cls"
-    EPOCHS = 20  # 클래스당 에포크 수
+    EPOCHS = 5  # 클래스당 에포크 수
     BATCH_SIZE = 50
-    IMG_SIZE = 1280
+    IMG_SIZE = 640
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     try:
