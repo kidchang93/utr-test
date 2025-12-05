@@ -171,10 +171,7 @@ def main():
     print("🚀 S3 하이브리드 YOLO 클래스별 순차 학습")
     print("   (클래스 단위 전체 다운로드 → 학습 → 모델 업데이트)")
     print("="*70 + "\n")
-    
-    # PyTorch 2.6 호환성 설정
-    # setup_pytorch_compatibility()
-    
+
     # 설정
     MODEL_SIZE = "11n"
     MODEL_TYPE = "-cls"
@@ -218,21 +215,26 @@ def main():
         
         # 이전에 학습된 최신 모델이 있으면 로드, 없으면 기본 모델
         # PyTorch 호환성 설정은 필요시에만 추가 (모델 로드 에러 발생 시)
-        
+
+        # 이전에 학습된 최신 모델이 있으면 로드, 없으면 기본 모델
         last_model_path = None
+
+        # 1. 버전 관리 파일 찾기 (start_idx > 0일 때만)
         if start_idx > 0:
-            # 100개 단위로 저장했으므로 가장 가까운 100의 배수 찾기
             last_saved_idx = (start_idx // 100) * 100
             if last_saved_idx > 0:
                 version = get_version_from_class_count(last_saved_idx)
-                last_model_path = weights_dir / f'best_v{version}.pt'
-        
-        # 버전 관리 파일이 없으면 best.pt 찾기
+                versioned_path = weights_dir / f'best_v{version}.pt'
+                if versioned_path.exists():
+                    last_model_path = versioned_path
+
+        # 2. 버전 관리 파일이 없으면 best.pt 사용 (항상 확인)
         if not (last_model_path and last_model_path.exists()):
             best_pt_path = weights_dir / 'best.pt'
-            if best_pt_path.exists() and start_idx > 0:
+            if best_pt_path.exists():
                 last_model_path = best_pt_path
-        
+
+        # 3. 모델 로드
         if last_model_path and last_model_path.exists():
             logger.info(f"📌 이전 학습 모델 로드: {last_model_path}")
             model = YOLO(str(last_model_path))
