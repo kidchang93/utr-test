@@ -14,6 +14,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import torch
+from torch.nn import Sequential
 from ultralytics import YOLO
 from ultralytics.nn import ClassificationModel
 
@@ -29,7 +30,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 # 신뢰할수있는 클래스 등록
-torch.serialization.add_safe_globals([ClassificationModel])
+torch.serialization.add_safe_globals([ClassificationModel, Sequential])
 
 
 def get_version_from_class_count(class_count: int) -> str:
