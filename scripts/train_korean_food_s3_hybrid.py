@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import torch
 from ultralytics import YOLO
+from ultralytics.nn import ClassificationModel
 
 sys.path.append(str(Path(__file__).parent))
 
@@ -27,6 +28,8 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+# 신뢰할수있는 클래스 등록
+torch.serialization.add_safe_globals([ClassificationModel])
 
 
 def get_version_from_class_count(class_count: int) -> str:
