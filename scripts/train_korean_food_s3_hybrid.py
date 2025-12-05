@@ -5,19 +5,13 @@ S3 하이브리드 YOLO 학습 (클래스별 전체 학습)
 - 다음 클래스 학습 시 이전 모델 로드하여 연속 학습
 """
 import sys
-import os
 import logging
 import shutil
 import json
-import time
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import torch
-from torch.nn import Sequential
-import ultralytics.nn.tasks as tasks_module
 from ultralytics import YOLO
-from ultralytics.nn import ClassificationModel
 
 sys.path.append(str(Path(__file__).parent))
 
@@ -31,24 +25,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ============ PyTorch 2.6 호환성 패치 ============
-original_torch_safe_load = tasks_module.torch_safe_load
-
-def patched_torch_safe_load(weights):
-    """weights_only=False로 모델을 로드하도록 패치"""
-    import torch
-    file = str(weights)
-    try:
-        ckpt = torch.load(file, weights_only=False)
-        weight = ckpt.get('model') or ckpt
-        return ckpt, weight
-    except Exception as e:
-        raise RuntimeError(f"Model loading failed: {e}")
-
-# 패치 적용
-tasks_module.torch_safe_load = patched_torch_safe_load
-# ============================================
-
+# PyTorch 2.6+ 호환성 설정
+try:
+    from ultralytics.nn.tasks import ClassificationModel
+    if hasattr(torch.serialization, 'add_safe_globals'):
+        torch.serialization.add_safe_globals([ClassificationModel])
+        print("✅ PyTorch 2.6+ 호환성 설정 완료")
+except (ImportError, AttributeError) as e:
+    print(f"⚠️ PyTorch 호환성 설정 실패: {e}")
 
 def get_version_from_class_count(class_count: int) -> str:
     """클래스 개수에 따라 버전 문자열 생성 (예: 1.0.1, 1.1.0)"""

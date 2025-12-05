@@ -1,6 +1,17 @@
 from ultralytics import YOLO
 import os
+import torch
 
+
+# PyTorch 2.6+ 호환성 설정
+try:
+    from ultralytics.nn.tasks import ClassificationModel
+    if hasattr(torch.serialization, 'add_safe_globals'):
+        torch.serialization.add_safe_globals([ClassificationModel])
+        print("✅ PyTorch 2.6+ 호환성 설정 완료")
+except (ImportError, AttributeError) as e:
+
+    print(f"⚠️ PyTorch 호환성 설정 실패: {e}")
 def test_yolo():
     model = YOLO("yolo11n-cls.pt")
     print(f"Has save method: {hasattr(model, 'save')}")
