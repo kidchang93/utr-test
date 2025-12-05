@@ -166,11 +166,27 @@ def train_single_class(
         return model, None
 
 
+# PyTorch 2.6 호환성 설정
+def setup_pytorch_compatibility():
+    """PyTorch 2.6의 weights_only 기본값 변경에 대응"""
+    try:
+        from ultralytics.nn.tasks import ClassificationModel
+        import torch.serialization
+        if hasattr(torch.serialization, 'add_safe_globals'):
+            torch.serialization.add_safe_globals([ClassificationModel])
+            logger.info("✅ PyTorch 2.6 호환성 설정 완료")
+    except (ImportError, AttributeError) as e:
+        logger.warning(f"⚠️ PyTorch 호환성 설정 실패 (무시 가능): {e}")
+
+
 def main():
     print("\n" + "="*70)
     print("🚀 S3 하이브리드 YOLO 클래스별 순차 학습")
     print("   (클래스 단위 전체 다운로드 → 학습 → 모델 업데이트)")
     print("="*70 + "\n")
+    
+    # PyTorch 2.6 호환성 설정
+    setup_pytorch_compatibility()
     
     # 설정
     MODEL_SIZE = "11n"
@@ -214,6 +230,15 @@ def main():
         weights_dir.mkdir(parents=True, exist_ok=True)
         
         # 이전에 학습된 최신 모델이 있으면 로드, 없으면 기본 모델
+        # PyTorch 2.6 호환성: weights_only 문제 해결
+        try:
+            from ultralytics.nn.tasks import ClassificationModel
+            import torch.serialization
+            torch.serialization.add_safe_globals([ClassificationModel])
+        except (ImportError, AttributeError):
+            # Ultralytics 버전에 따라 클래스 경로가 다를 수 있음
+            pass
+        
         last_model_path = None
         if start_idx > 0:
             # 100개 단위로 저장했으므로 가장 가까운 100의 배수 찾기
