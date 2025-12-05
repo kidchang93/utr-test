@@ -217,7 +217,8 @@ def main():
         weights_dir.mkdir(parents=True, exist_ok=True)
         
         # 이전에 학습된 최신 모델이 있으면 로드, 없으면 기본 모델
-
+        # PyTorch 호환성 설정은 필요시에만 추가 (모델 로드 에러 발생 시)
+        
         last_model_path = None
         if start_idx > 0:
             # 100개 단위로 저장했으므로 가장 가까운 100의 배수 찾기
@@ -226,8 +227,14 @@ def main():
                 version = get_version_from_class_count(last_saved_idx)
                 last_model_path = weights_dir / f'best_v{version}.pt'
         
+        # 버전 관리 파일이 없으면 best.pt 찾기
+        if not (last_model_path and last_model_path.exists()):
+            best_pt_path = weights_dir / 'best.pt'
+            if best_pt_path.exists() and start_idx > 0:
+                last_model_path = best_pt_path
+        
         if last_model_path and last_model_path.exists():
-            logger.info(f"📌 이전 학습 모델 로드: {last_model_path} ({last_saved_idx}개 클래스까지 학습됨)")
+            logger.info(f"📌 이전 학습 모델 로드: {last_model_path}")
             model = YOLO(str(last_model_path))
         else:
             logger.info(f"🎯 초기 모델 로드: yolo{MODEL_SIZE}{MODEL_TYPE}.pt")
