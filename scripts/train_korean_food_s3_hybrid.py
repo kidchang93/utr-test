@@ -39,8 +39,7 @@ def patched_torch_safe_load(weights):
     import torch
     file = str(weights)
     try:
-        device = 'cuda' if torch.cuda.is_available() else 'cpu',
-        ckpt = torch.load(file, map_location=device, weights_only=False)
+        ckpt = torch.load(file, weights_only=False)
         weight = ckpt.get('model') or ckpt
         return ckpt, weight
     except Exception as e:
