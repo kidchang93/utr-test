@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import torch
 from torch.nn import Sequential
+import ultralytics.nn.tasks as tasks_module
 from ultralytics import YOLO
 from ultralytics.nn import ClassificationModel
 
@@ -29,8 +30,25 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-# 신뢰할수있는 클래스 등록
-torch.serialization.add_safe_globals([ClassificationModel, Sequential])
+
+# ============ PyTorch 2.6 호환성 패치 ============
+original_torch_safe_load = tasks_module.torch_safe_load
+
+def patched_torch_safe_load(weights):
+    """weights_only=False로 모델을 로드하도록 패치"""
+    import torch
+    file = str(weights)
+    try:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu',
+        ckpt = torch.load(file, map_location=device, weights_only=False)
+        weight = ckpt.get('model') or ckpt
+        return ckpt, weight
+    except Exception as e:
+        raise RuntimeError(f"Model loading failed: {e}")
+
+# 패치 적용
+tasks_module.torch_safe_load = patched_torch_safe_load
+# ============================================
 
 
 def get_version_from_class_count(class_count: int) -> str:
