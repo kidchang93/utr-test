@@ -175,9 +175,9 @@ def main():
     # 설정
     MODEL_SIZE = "11n"
     MODEL_TYPE = "-cls"
-    EPOCHS = 1  # 클래스당 에포크 수
-    BATCH_SIZE = 1
-    IMG_SIZE = 640
+    EPOCHS = 20  # 클래스당 에포크 수
+    BATCH_SIZE = 50
+    IMG_SIZE = 1280
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
     
     try:
@@ -216,11 +216,14 @@ def main():
         # 이전에 학습된 최신 모델이 있으면 로드, 없으면 기본 모델
         last_model_path = None
         if start_idx > 0:
-            version = get_version_from_class_count(start_idx)
-            last_model_path = weights_dir / f'best_v{version}.pt'
+            # 100개 단위로 저장했으므로 가장 가까운 100의 배수 찾기
+            last_saved_idx = (start_idx // 100) * 100
+            if last_saved_idx > 0:
+                version = get_version_from_class_count(last_saved_idx)
+                last_model_path = weights_dir / f'best_v{version}.pt'
         
         if last_model_path and last_model_path.exists():
-            logger.info(f"📌 이전 학습 모델 로드: {last_model_path}")
+            logger.info(f"📌 이전 학습 모델 로드: {last_model_path} ({last_saved_idx}개 클래스까지 학습됨)")
             model = YOLO(str(last_model_path))
         else:
             logger.info(f"🎯 초기 모델 로드: yolo{MODEL_SIZE}{MODEL_TYPE}.pt")
@@ -267,15 +270,23 @@ def main():
             )
             
             if new_model_path:
-                # 버전 관리된 이름으로 복사
-                version = get_version_from_class_count(i)
-                versioned_name = f'best_v{version}.pt'
-                dest_path = weights_dir / versioned_name
-                shutil.copy2(new_model_path, dest_path)
+                # 100개 클래스마다 모델 저장
+                SAVE_INTERVAL = 100  # 저장 간격 설정
                 
-                logger.info(f"   💾 모델 저장 완료: {dest_path}")
+                if i % SAVE_INTERVAL == 0 or i == len(class_names):
+                    # 버전 관리된 이름으로 복사
+                    version = get_version_from_class_count(i)
+                    versioned_name = f'best_v{version}.pt'
+                    dest_path = weights_dir / versioned_name
+                    shutil.copy2(new_model_path, dest_path)
+                    
+                    logger.info(f"   💾 모델 저장 완료 ({i}개 클래스 완료): {dest_path}")
+                    logger.info(f"   📊 다음 저장 시점: {((i // SAVE_INTERVAL) + 1) * SAVE_INTERVAL}개 클래스")
+                else:
+                    next_save = ((i // SAVE_INTERVAL) + 1) * SAVE_INTERVAL
+                    logger.info(f"   ✅ 클래스 학습 완료 ({i}/{len(class_names)}) - 다음 저장: {next_save}개 클래스")
                 
-                # 진행 상황 저장
+                # 진행 상황은 항상 저장 (중단 시 복구용)
                 progress_data['last_class_idx'] = i
                 save_progress(progress_file, progress_data)
             else:

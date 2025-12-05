@@ -31,3 +31,5 @@ Thumbs.db
 !yolo11n-cls.pt
 !yolo11n.pt
 /logs/
+/progress.json
+/progress_class_based.json
