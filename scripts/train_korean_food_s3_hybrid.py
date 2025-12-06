@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 import torch
 from ultralytics import YOLO
+import errno
+import time
 
 sys.path.append(str(Path(__file__).parent))
 
@@ -25,6 +27,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 logging.getLogger('ultralytics').setLevel(logging.INFO)
+
+# ultralytics 로거 전파 보장
+ultralytics_logger = logging.getLogger('ultralytics')
+ultralytics_logger.setLevel(logging.INFO)
+ultralytics_logger.propagate = True
 
 # PyTorch 2.6+ 호환성 설정
 try:
@@ -172,6 +179,46 @@ def train_single_class(
         return model, None
 
 
+def safe_rmtree(path: Path, max_retries: int = 3, delay: float = 0.5):
+    """
+    안전하게 디렉토리 삭제 (재시도 로직 포함)
+    """
+    for attempt in range(max_retries):
+        try:
+            if path.exists():
+                shutil.rmtree(path)
+                logger.debug(f"   🗑️  임시 디렉토리 삭제 완료: {path}")
+                return True
+        except OSError as e:
+            if e.errno == errno.ENOTEMPTY or e.errno == errno.EBUSY:
+                if attempt < max_retries - 1:
+                    logger.warning(f"   ⚠️  디렉토리 삭제 재시도 중... ({attempt + 1}/{max_retries})")
+                    time.sleep(delay * (attempt + 1))  # 지수 백오프
+                else:
+                    logger.error(f"   ❌ 디렉토리 삭제 실패 (재시도 {max_retries}회 실패): {path}")
+                    # 마지막 시도: 강제 삭제 시도
+                    try:
+                        import os
+                        for root, dirs, files in os.walk(path, topdown=False):
+                            for name in files:
+                                try:
+                                    os.remove(os.path.join(root, name))
+                                except:
+                                    pass
+                            for name in dirs:
+                                try:
+                                    os.rmdir(os.path.join(root, name))
+                                except:
+                                    pass
+                        os.rmdir(path)
+                    except Exception as final_e:
+                        logger.error(f"   ❌ 강제 삭제도 실패: {final_e}")
+                        return False
+            else:
+                logger.error(f"   ❌ 디렉토리 삭제 중 오류: {e}")
+                return False
+    return True
+
 def main():
     print("\n" + "="*70)
     print("🚀 S3 하이브리드 YOLO 클래스별 순차 학습")
@@ -259,7 +306,7 @@ def main():
             
             # 임시 디렉토리 초기화
             if temp_dir.exists():
-                shutil.rmtree(temp_dir)
+                safe_rmtree(temp_dir)
             temp_dir.mkdir(parents=True, exist_ok=True)
             
             # 데이터 다운로드
