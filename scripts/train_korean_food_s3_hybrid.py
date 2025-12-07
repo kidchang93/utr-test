@@ -4,6 +4,8 @@ S3 하이브리드 YOLO 학습 (클래스별 전체 학습)
 - 한 클래스 학습 완료 후 모델 저장 (버전 관리)
 - 다음 클래스 학습 시 이전 모델 로드하여 연속 학습
 """
+import os
+import stat
 import sys
 import logging
 import shutil
@@ -179,45 +181,102 @@ def train_single_class(
         return model, None
 
 
-def safe_rmtree(path: Path, max_retries: int = 3, delay: float = 0.5):
+def safe_rmtree(path: Path, max_retries: int = 5, delay: float = 0.5) -> bool:
     """
-    안전하게 디렉토리 삭제 (재시도 로직 포함)
+    안전하게 디렉토리 삭제 (동기적 처리)
+
+    Args:
+        path: 삭제할 디렉토리 경로
+        max_retries: 최대 재시도 횟수 (기본값: 5)
+        delay: 초기 대기 시간 (초) - 지수 백오프 적용 (기본값: 0.5)
+
+    Returns:
+        bool: 성공 여부 (True = 완전히 삭제됨, False = 삭제 실패)
     """
+    path = Path(path)
+
+    if not path.exists():
+        logger.debug(f"   ℹ️  경로가 이미 존재하지 않음: {path}")
+        return True
+
+    def handle_remove_readonly(func, path, exc):
+        """읽기 전용 파일 권한 변경 후 삭제"""
+        try:
+            os.chmod(path, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+            func(path)
+            logger.debug(f"      ✓ 권한 변경 후 삭제 성공: {path}")
+        except Exception as e:
+            logger.warning(f"      ⚠️  권한 변경 후 삭제 실패: {path} - {e}")
+
     for attempt in range(max_retries):
         try:
             if path.exists():
-                shutil.rmtree(path)
-                logger.debug(f"   🗑️  임시 디렉토리 삭제 완료: {path}")
-                return True
-        except OSError as e:
-            if e.errno == errno.ENOTEMPTY or e.errno == errno.EBUSY:
-                if attempt < max_retries - 1:
-                    logger.warning(f"   ⚠️  디렉토리 삭제 재시도 중... ({attempt + 1}/{max_retries})")
-                    time.sleep(delay * (attempt + 1))  # 지수 백오프
-                else:
-                    logger.error(f"   ❌ 디렉토리 삭제 실패 (재시도 {max_retries}회 실패): {path}")
-                    # 마지막 시도: 강제 삭제 시도
-                    try:
-                        import os
-                        for root, dirs, files in os.walk(path, topdown=False):
-                            for name in files:
-                                try:
-                                    os.remove(os.path.join(root, name))
-                                except:
-                                    pass
-                            for name in dirs:
-                                try:
-                                    os.rmdir(os.path.join(root, name))
-                                except:
-                                    pass
-                        os.rmdir(path)
-                    except Exception as final_e:
-                        logger.error(f"   ❌ 강제 삭제도 실패: {final_e}")
-                        return False
-            else:
-                logger.error(f"   ❌ 디렉토리 삭제 중 오류: {e}")
-                return False
-    return True
+                # 방법 1: shutil.rmtree with onerror 핸들러 (가장 효과적)
+                shutil.rmtree(path, onerror=handle_remove_readonly)
+                logger.debug(f"   🗑️  shutil.rmtree 실행 완료")
+        except Exception as e:
+            logger.debug(f"   ⚠️  shutil.rmtree 시도 {attempt + 1}/{max_retries} 실패: {e}")
+
+        # ✅ 삭제 후 실제로 존재하지 않을 때까지 확인 (동기적 처리)
+        if not path.exists():
+            logger.info(f"   ✅ 디렉토리 삭제 완료: {path}")
+            return True
+
+        # 디렉토리가 아직 남아있으면 대기 후 재시도
+        if attempt < max_retries - 1:
+            wait_time = delay * (2 ** attempt)  # 지수 백오프: 0.5s, 1s, 2s, 4s, 8s
+            logger.warning(f"   ⏳ 디렉토리 삭제 대기 중... ({attempt + 1}/{max_retries}) - {wait_time:.1f}초")
+            time.sleep(wait_time)
+        else:
+            logger.error(f"   ❌ shutil.rmtree 재시도 {max_retries}회 실패. 수동 삭제 시도...")
+
+            # 방법 2: 수동 삭제 (os.walk 역순 순회)
+            if _manual_rmtree(path):
+                # 수동 삭제 후 다시 확인
+                time.sleep(0.5)
+                if not path.exists():
+                    logger.info(f"   ✅ 수동 삭제로 완료: {path}")
+                    return True
+
+    logger.error(f"   ❌ 디렉토리 삭제 완전 실패: {path}")
+    return False
+
+
+def _manual_rmtree(path: Path) -> bool:
+    """
+    수동으로 디렉토리 삭제 (shutil 실패 시 사용)
+    """
+    try:
+        for root, dirs, files in os.walk(path, topdown=False):
+            # 파일 삭제
+            for name in files:
+                file_path = os.path.join(root, name)
+                try:
+                    os.chmod(file_path, stat.S_IWRITE | stat.S_IREAD)
+                    os.remove(file_path)
+                    logger.debug(f"      ✓ 파일 삭제: {file_path}")
+                except Exception as file_e:
+                    logger.warning(f"      ⚠️  파일 삭제 실패: {file_path} - {file_e}")
+
+            # 디렉토리 삭제
+            for name in dirs:
+                dir_path = os.path.join(root, name)
+                try:
+                    os.chmod(dir_path, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+                    os.rmdir(dir_path)
+                    logger.debug(f"      ✓ 디렉토리 삭제: {dir_path}")
+                except Exception as dir_e:
+                    logger.warning(f"      ⚠️  디렉토리 삭제 실패: {dir_path} - {dir_e}")
+
+        # 최상위 디렉토리 삭제
+        os.chmod(path, stat.S_IWRITE | stat.S_IREAD | stat.S_IEXEC)
+        os.rmdir(path)
+        logger.debug(f"   ✓ 수동 삭제 성공: {path}")
+        return True
+
+    except Exception as manual_e:
+        logger.error(f"   ❌ 수동 삭제 실패: {manual_e}")
+        return False
 
 def main():
     print("\n" + "="*70)
@@ -303,12 +362,20 @@ def main():
             logger.info(f"\n{'='*70}")
             logger.info(f"📦 [{i}/{len(class_names)}] 클래스 처리 중: {class_name}")
             logger.info(f"{'='*70}")
-            
-            # 임시 디렉토리 초기화
+
+            # ✅ Step 1: 임시 디렉토리 삭제 (완전히 완료될 때까지 동기적 대기)
             if temp_dir.exists():
-                safe_rmtree(temp_dir)
+                logger.info("   🗑️  임시 디렉토리 삭제 중...")
+                success = safe_rmtree(temp_dir)
+                if success:
+                    logger.info("   ✅ 디렉토리 삭제 완료")
+                else:
+                    logger.error("   ❌ 디렉토리 삭제 실패!")
+                    break
+            # ✅ Step 2: 새 디렉토리 생성
             temp_dir.mkdir(parents=True, exist_ok=True)
-            
+            logger.info("   ✅ 임시 디렉토리 준비 완료")
+
             # 데이터 다운로드
             train_keys = train_structure.get(class_name, [])
             val_keys = val_structure.get(class_name, [])
@@ -361,7 +428,7 @@ def main():
                 
             # 디스크 공간 확보를 위해 임시 파일 즉시 삭제
             if temp_dir.exists():
-                shutil.rmtree(temp_dir)
+                safe_rmtree(temp_dir)
                 
         logger.info("\n✅ 모든 학습이 완료되었습니다.")
         
@@ -369,7 +436,7 @@ def main():
         logger.error(f"오류 발생: {e}", exc_info=True)
     finally:
         if temp_dir.exists():
-            shutil.rmtree(temp_dir)
+            safe_rmtree(temp_dir)
 
 if __name__ == "__main__":
     main()
