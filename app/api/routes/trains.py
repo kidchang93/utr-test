@@ -68,9 +68,9 @@ def trigger_s3_stream_training(
     response_model=JobResponse,
     status_code=status.HTTP_202_ACCEPTED,
     summary="S3 하이브리드 배치 학습 실행",
-    description="`train_korean_food_s3_hybrid.py`를 호출하여 클래스별 배치 학습을 시작합니다. "
-                "각 클래스마다 50장씩 다운로드 → 학습 → 삭제를 반복하며, "
-                "TRAIN 데이터를 모두 학습한 후 VAL 데이터를 학습합니다.",
+    description="`train_korean_food_s3_hybrid.py`를 호출하여"
+                "각 클래스마다 train = 80, val = 20장씩 다운로드를 모두 하고"
+                "데이터 학습을 시작합니다.",
     responses={
         202: {"description": "학습 작업이 백그라운드 큐에 등록됨"},
         400: {"description": "x-birthdate 헤더 누락 또는 형식 오류"},
