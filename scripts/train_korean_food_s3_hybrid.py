@@ -78,21 +78,24 @@ def download_class_data(
         train_keys: List[str],
         val_keys: List[str],
         temp_dir: Path,
-        train_max: int = 80,  # 최대 train 샘플 수
-        val_max: int = 20      # 최대 val 샘플 수
+        train_ratio: float = 1.0,  # train 비율 (1.0 = 모든 데이터)
+        train_max: int = 1000,      # 최대 train 샘플 수
+        val_ratio: float = 1.0,     # val 비율 (1.0 = 모든 데이터)
+        val_max: int = 200          # 최대 val 샘플 수
 ) -> bool:
     """
-    특정 클래스의 Train/Val 데이터를 순차적으로 다운로드
+    특정 클래스의 Train/Val 데이터를 비율 기반으로 다운로드
     """
     try:
         # Train 샘플링 및 다운로드
         train_dir = temp_dir / 'train' / class_name
         train_dir.mkdir(parents=True, exist_ok=True)
 
-        # 순차 샘플링 (앞에서부터 최대 train_max개)
-        sampled_train_keys = train_keys[:min(train_max, len(train_keys))]
+        # 전체 train 데이터 중 비율만큼 사용 (최대 train_max개)
+        train_count = min(int(len(train_keys) * train_ratio), train_max, len(train_keys))
+        sampled_train_keys = train_keys[:train_count]
 
-        logger.info(f"   ⬇️  Train 데이터 다운로드 중... ({len(sampled_train_keys)}/{len(train_keys)}장)")
+        logger.info(f"   ⬇️  Train 데이터 다운로드 중... ({len(sampled_train_keys)}/{len(train_keys)}장, 최대 {train_max}장)")
         for key in sampled_train_keys:
             try:
                 image = s3_loader.load_image_from_s3(key)
@@ -107,10 +110,11 @@ def download_class_data(
         val_dir.mkdir(parents=True, exist_ok=True)
 
         if val_keys:
-            # 순차 샘플링 (앞에서부터 최대 val_max개)
-            sampled_val_keys = val_keys[:min(val_max, len(val_keys))]
+            # 전체 val 데이터 중 비율만큼 사용 (최대 val_max개)
+            val_count = min(int(len(val_keys) * val_ratio), val_max, len(val_keys))
+            sampled_val_keys = val_keys[:val_count]
 
-            logger.info(f"   ⬇️  Val 데이터 다운로드 중... ({len(sampled_val_keys)}/{len(val_keys)}장)")
+            logger.info(f"   ⬇️  Val 데이터 다운로드 중... ({len(sampled_val_keys)}/{len(val_keys)}장, 최대 {val_max}장)")
             for key in sampled_val_keys:
                 try:
                     image = s3_loader.load_image_from_s3(key)
@@ -301,8 +305,10 @@ def main():
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # 샘플링 설정
-    TRAIN_SAMPLES_PER_CLASS = 80  # 클래스당 train 샘플 수
-    VAL_SAMPLES_PER_CLASS = 20     # 클래스당 val 샘플 수
+    TRAIN_SAMPLES_PER_CLASS = 1000  # 클래스당 train 최대 샘플 수
+    VAL_SAMPLES_PER_CLASS = 200     # 클래스당 val 최대 샘플 수
+    TRAIN_RATIO = 1.0               # train 비율 (1.0 = 모든 데이터)
+    VAL_RATIO = 1.0                 # val 비율 (1.0 = 모든 데이터)
 
     try:
         s3_config = get_s3_config()
@@ -377,10 +383,11 @@ def main():
                 train_keys,
                 val_keys,
                 temp_dir,
+                train_ratio=TRAIN_RATIO,
                 train_max=TRAIN_SAMPLES_PER_CLASS,
+                val_ratio=VAL_RATIO,
                 val_max=VAL_SAMPLES_PER_CLASS
             )
-
             if not success:
                 logger.error(f"   ❌ {class_name}: 데이터 다운로드 실패.")
                 all_downloaded = False
