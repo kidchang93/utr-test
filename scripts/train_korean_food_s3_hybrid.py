@@ -79,9 +79,9 @@ def download_class_data(
         val_keys: List[str],
         temp_dir: Path,
         train_ratio: float = 1.0,  # train 비율 (1.0 = 모든 데이터)
-        train_max: int = 1000,      # 최대 train 샘플 수
+        train_max: int = 2000,      # 최대 train 샘플 수
         val_ratio: float = 1.0,     # val 비율 (1.0 = 모든 데이터)
-        val_max: int = 200          # 최대 val 샘플 수
+        val_max: int = 1000        # 최대 val 샘플 수
 ) -> bool:
     """
     특정 클래스의 Train/Val 데이터를 비율 기반으로 다운로드
