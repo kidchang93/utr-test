@@ -299,14 +299,14 @@ def main():
     # 설정
     MODEL_SIZE = "11n"
     MODEL_TYPE = "-cls"
-    EPOCHS = 5
-    BATCH_SIZE = 10
+    EPOCHS = 10
+    BATCH_SIZE = 5
     IMG_SIZE = 640
     DEVICE = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # 샘플링 설정
-    TRAIN_SAMPLES_PER_CLASS = 1000  # 클래스당 train 최대 샘플 수
-    VAL_SAMPLES_PER_CLASS = 200     # 클래스당 val 최대 샘플 수
+    TRAIN_SAMPLES_PER_CLASS = 2000  # 클래스당 train 최대 샘플 수
+    VAL_SAMPLES_PER_CLASS = 1000     # 클래스당 val 최대 샘플 수
     TRAIN_RATIO = 1.0               # train 비율 (1.0 = 모든 데이터)
     VAL_RATIO = 1.0                 # val 비율 (1.0 = 모든 데이터)
 
